@@ -1,34 +1,48 @@
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, jsonify
 import os
+import price_prediction
+import real_time_price_display
+import time
 
 app = Flask(__name__)
 
-# 全局变量存储目标温度
-target_temperature = None
+# 全局变量存储价格数据
+price_data = {
+    'stock_name': '',
+    'current_price': 0,
+    'future_price': 0,
+    'update_time': ''
+}
 
-def get_latest_data():
-    # 模拟获取温度和湿度数据
-    temperature = 25.0  # 模拟温度
-    humidity = 60.0     # 模拟湿度
-    return temperature, humidity
+# API接口：获取实时价格数据
+@app.route('/api/price_data')
+def get_price_data():
+    try:
+        spider = real_time_price_display.GoldFuturesSpider()
+        model = price_prediction.FuturesModel()
+        
+        name, current_price = spider.get_data()
+        future_price = model.train_and_predict()
+        
+        price_data = {
+            'stock_name': name,
+            'current_price': current_price,
+            'future_price': future_price,
+            'update_time': time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        return jsonify(price_data)
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'update_time': time.strftime('%Y-%m-%d %H:%M:%S')
+        }), 500
 
+# 首页路由
 @app.route('/')
 def index():
-    global target_temperature
-    temperature, humidity = get_latest_data()
-    return render_template('index.html', temperature=temperature, humidity=humidity, target_temperature=target_temperature)
+    return render_template('index.html')
 
-@app.route('/set-temperature', methods=['POST'])
-def set_temperature():
-    global target_temperature
-    target_temp = request.form.get('target_temperature')
-    if target_temp:
-        try:
-            target_temperature = float(target_temp)  # 更新目标温度
-        except ValueError:
-            print("无效温度输入")
-    return redirect('/')
-    
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
